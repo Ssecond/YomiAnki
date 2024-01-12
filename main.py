@@ -85,8 +85,8 @@ try:
             if note[kanaField] == 'null' or note[kanaField] == '':
                 print('Происходит работа с「{}」'.format(note[onlyKanjiField]), end='…\n')  # DEBUG
                 buf = findPitch(note[onlyKanjiField], kana(note[kanjiField]))  # Преобразуем
-                # if buf != 'NOT FOUND':
-                note[kanaField] = buf
+                if buf != 'NOT FOUND':
+                    note[kanaField] = buf
                 # всё поле в кану и записываем на карточку
                 # col.set_user_flag_for_cards(4, cids=[note.cards()[0].id, ])  # Ставим на карточку синий флажок
                 if buf == 'NOT FOUND':
@@ -95,10 +95,13 @@ try:
                 if note[pronunciationField] == 'null' or note[pronunciationField] == '':
                     print("Поиск произношений", end='…\n')  # DEBUG
                     pronunciationURL = Pronunciation.getPronunciationURL(word=note[onlyKanjiField])
-                    print("Произношение было найдено. Ссылка: " + pronunciationURL)  # DEBUG
-                    soundFileName = f'{note[onlyKanjiField]}.mp3'
-                    Pronunciation.download_pronunciation(pronunciationURL, profilePath, soundFileName)
-                    note[pronunciationField] = f'[sound:{soundFileName}]'
+                    if pronunciationURL != 'NOT FOUND':
+                        print("Произношение было найдено. Ссылка: " + pronunciationURL)  # DEBUG
+                        soundFileName = f'{note[onlyKanjiField]}.mp3'
+                        Pronunciation.download_pronunciation(pronunciationURL, profilePath, soundFileName)
+                        note[pronunciationField] = f'[sound:{soundFileName}]'
+                    else:
+                        col.set_user_flag_for_cards(1, cids=[note.cards()[0].id, ])  # Ставим на карточку красный флажок
                 col.update_note(note)  # Обновляем базу данных
                 isHereSmthToChange = True  # Записываем факт того, что мы что-то изменили, и есть что сохранить
                 print(note[kanjiField], note[kanaField], sep=" ———→ ")  # DEBUG

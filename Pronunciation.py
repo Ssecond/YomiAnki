@@ -33,14 +33,15 @@ def getPronunciationURL(word: str) -> str:
     try:
         response = urllib.request.urlopen(url=search_url + urllib.parse.quote_plus(word)).read()
     except Exception as e:
-        print(e)
+        # print(e)
+        return 'NOT FOUND'
 
     html = BeautifulSoup(response, 'html.parser')
 
     available_langs_el = html.find_all(id=re.compile(r"language-container-\w{2,4}"))
     available_langs = [re.findall(r"language-container-(\w{2,4})", el.attrs["id"])[0] for el in available_langs_el]
     if language not in available_langs:
-        raise Exception()
+        return 'NOT FOUND'
 
     lang_container = [lang for lang in available_langs_el if
                       re.findall(r"language-container-(\w{2,4})", lang.attrs["id"])[0] == language][0]
@@ -49,7 +50,7 @@ def getPronunciationURL(word: str) -> str:
         lang_container.find_all(class_="pronunciations")[0].find_all(class_="pronunciations-list")[0].find_all("li")
 
     max_votes = -1
-    finalPronunciationURL: str
+    finalPronunciationURL: str = 'NOT FOUND'
     pronunciation_dl: str
 
     for pronunciation in pronunciations:
