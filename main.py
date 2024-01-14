@@ -40,28 +40,32 @@ def kana(text: str):
         print('Не получилось извлечь кану из-за неизвестной ошибки.', exception, sep='\n')
 
 
-globalSettingsFilename: str = 'settings.ini'
+# constants
+redFlagID: int = 1
+blueFlagID: int = 4
+considerNotFilled = ['', 'null']
 
-if path.exists(globalSettingsFilename):
+globalSettingsFileName: str = 'settings.ini'
+if path.exists(globalSettingsFileName):
     config = configparser.ConfigParser()
-    config.read(filenames=globalSettingsFilename, encoding="utf8")
+    config.read(filenames=globalSettingsFileName, encoding="utf8")
 else:
-    raise FileNotFoundError(f'Файл настроек \"{globalSettingsFilename}\" не был найден.')
+    raise FileNotFoundError(f'Файл настроек \"{globalSettingsFileName}\" не был найден.')
 
 # Путь к профилю Anki
-profilePath = os.getenv('APPDATA') + '\\' + config['GlobalSettings']['profileRelativePath']
+profilePath: str = os.getenv('APPDATA') + '\\' + config['InitialSettings']['profileRelativePath']
 # Название колоды
-deckName = config['GlobalSettings']['deckName']
+deckName: str = config['InitialSettings']['deckName']
 # Название типа записей
-noteType = config['GlobalSettings']['noteType']
+noteType: str = config['InitialSettings']['noteType']
 # Поля
-kanjiField = config['GlobalSettings']['kanjiField']
-kanaField = config['GlobalSettings']['kanaField']
-pronunciationField = config['GlobalSettings']['pronunciationField']
-onlyKanjiField = config['GlobalSettings']['onlyKanjiField']
+kanjiField: str = config['InitialSettings']['kanjiField']
+kanaField: str = config['InitialSettings']['kanaField']
+pronunciationField: str = config['InitialSettings']['pronunciationField']
+onlyKanjiField: str = config['InitialSettings']['onlyKanjiField']
 
-isHereSmthToChange = False
-
+searchForPronunciation: bool = bool(config['ModeSettings']['searchForPronunciation'])
+searchForPitch: bool = bool(config['ModeSettings']['searchForPitch'])
 col: Collection = None
 
 try:
@@ -71,7 +75,7 @@ try:
     cpath = path.join(profilePath, 'collection.anki2')
 
     # Загружаем коллекцию
-    col = Collection(cpath)  # Entry point to the API
+    col = Collection(cpath)
 
     # Сразу после "deck:" пишется путь к колоде, пробелы заменяются на "_"
     deck = col.find_notes('deck:' + deckName.replace(' ', '_'))
@@ -81,18 +85,23 @@ try:
     for noteId in deck:
         note = col.get_note(noteId)
         if note.note_type()['name'] == noteType:
-            # Если в карточке ещё не указаны тональности, то записываем, если же есть, то не трогаем
-            if note[kanaField] == 'null' or note[kanaField] == '':
-                print('Происходит работа с「{}」'.format(note[onlyKanjiField]), end='…\n')  # DEBUG
-                buf = findPitch(note[onlyKanjiField], kana(note[kanjiField]))  # Преобразуем
-                if buf != 'NOT FOUND':
-                    note[kanaField] = buf
-                # всё поле в кану и записываем на карточку
-                # col.set_user_flag_for_cards(4, cids=[note.cards()[0].id, ])  # Ставим на карточку синий флажок
-                if buf == 'NOT FOUND':
-                    col.set_user_flag_for_cards(1, cids=[note.cards()[0].id, ])  # Ставим на карточку красный флажок
-                # ↑ берём карточки по id [0], потому что в этом типе записей только одна карточка
-                if note[pronunciationField] == 'null' or note[pronunciationField] == '':
+            print('Смотрим на「{}」'.format(note[onlyKanjiField]), end='…\n')  # DEBUG
+            if searchForPitch:
+                # Если в карточке ещё не указаны тональности, то записываем, если же есть, то не трогаем
+                if note[kanaField] in considerNotFilled:
+                    buf = findPitch(note[onlyKanjiField], kana(note[kanjiField]))  # Преобразуем
+                    if buf != 'NOT FOUND':
+                        note[kanaField] = buf
+                    # всё поле в кану и записываем на карточку
+                    # col.set_user_flag_for_cards(blueFlagID, cids=[note.cards()[0].id, ])  # Ставим на карточку синий флажок
+                    if buf == 'NOT FOUND':
+                        col.set_user_flag_for_cards(redFlagID,
+                                                    cids=[note.cards()[0].id, ])  # Ставим на карточку красный флажок
+                    # ↑ берём карточки по id [0], потому что в этом типе записей только одна карточка
+                    col.update_note(note)  # Сохраняем изменения в карточке
+                    print(note[kanjiField], note[kanaField], sep=" ———→ ")  # DEBUG
+            if searchForPronunciation:
+                if note[pronunciationField] in considerNotFilled:
                     print("Поиск произношений", end='…\n')  # DEBUG
                     pronunciationURL = Pronunciation.getPronunciationURL(word=note[onlyKanjiField])
                     if pronunciationURL != 'NOT FOUND':
@@ -101,23 +110,12 @@ try:
                         Pronunciation.download_pronunciation(pronunciationURL, profilePath, soundFileName)
                         note[pronunciationField] = f'[sound:{soundFileName}]'
                     else:
-                        col.set_user_flag_for_cards(1, cids=[note.cards()[0].id, ])  # Ставим на карточку красный флажок
-                col.update_note(note)  # Обновляем базу данных
-                isHereSmthToChange = True  # Записываем факт того, что мы что-то изменили, и есть что сохранить
-                print(note[kanjiField], note[kanaField], sep=" ———→ ")  # DEBUG
-                print('—' * 40)  # DEBUG
+                        print("Произношение не найдено.")  # DEBUG
+                        col.set_user_flag_for_cards(redFlagID,
+                                                    cids=[note.cards()[0].id, ])  # Ставим на карточку красный флажок
+                    col.update_note(note)  # Сохраняем изменения в карточке
+            print('—' * 40)  # DEBUG
 
-    ###### Now changes saves automatically
-    # if isHereSmthToChange:
-    #     # Защита от дурочка :)
-    #     answer = input('Сохранить изменения в базу?\nВнимание! Их нельзя будет обратить! (Да(Yes)/Нет(No))\n').lower()
-    #     if answer == 'да' or answer == 'yes':
-    #         col.save()  # Сохраняем и синхронизируем
-    #         print('Изменения были записаны в базу.')
-    #     else:
-    #         print('Изменения не сохранены.')
-    # else:
-    #     print('Нечего сохранять, никаких изменений не было произведено.')
     print('Изменения были записаны в базу.')
 except ValueError as e:
     print(e, sep='\n')
@@ -125,7 +123,7 @@ except FileNotFoundError as e:
     print(e, sep='\n')
 except Exception as e:
     print('Произошла неизвестная ошибка.', e, sep='\n')
-# finally:
-#     if col != None:
-#         col.close(save=False, downgrade=False)
-input("Нажмите любую клавишу, чтобы закончить работу.")
+finally:
+    if col != None:
+        col.close(downgrade=False)
+    input("Нажмите любую клавишу, чтобы закончить работу.")
